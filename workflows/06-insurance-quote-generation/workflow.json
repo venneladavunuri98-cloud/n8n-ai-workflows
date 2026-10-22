@@ -1,0 +1,1048 @@
+{
+  "name": "Insurance Quote Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "f659e7ae-b8bb-4ba8-b8c9-d37e1ac6bbb9",
+      "name": "Merge Both1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        1168
+      ],
+      "id": "997cf589-12fe-4e96-8664-e41da57f9731",
+      "name": "Prepare Plans1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n\n  const customer =\n    item.json.parsedResponse?.normalized_data || {};\n\n  const budget =\n    Number(customer.budget || 0);\n\n  const premium =\n    Number(item.json.premium || 0);\n\n  const required =\n    customer.required_coverages || [];\n\n  let score = 0;\n\n  // Reject expensive plans\n  if (premium > budget) {\n\n    item.json.score = -1;\n\n    return item;\n  }\n\n  // Coverage scoring\n  required.forEach(cov => {\n\n    if (cov === \"BI_per_person\") {\n      score +=\n        Number(item.json.BI_per_person || 0) / 1000;\n    }\n\n    if (cov === \"BI_per_accident\") {\n      score +=\n        Number(item.json.BI_per_accident || 0) / 2000;\n    }\n\n    if (cov === \"collision_coverage\") {\n      score +=\n        Number(item.json.collision_coverage || 0) / 10000;\n    }\n\n    if (cov === \"comp_coverage\") {\n      score +=\n        Number(item.json.comp_coverage || 0) / 10000;\n    }\n\n    // Lower deductible is better\n    if (cov === \"collision_deductible\") {\n      score +=\n        5000 / Number(item.json.collision_deductible || 5000);\n    }\n\n    if (cov === \"comp_deductible\") {\n      score +=\n        5000 / Number(item.json.comp_deductible || 5000);\n    }\n\n  });\n\n  // Budget bonus\n  score += ((budget - premium) / budget) * 20;\n\n  item.json.score =\n    Number(score.toFixed(2));\n\n  item.json.customer =\n    customer.first_name || \"Customer\";\n\n  item.json.email =\n    customer.email || \"\";\n\n  return item;\n\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3184,
+        1056
+      ],
+      "id": "65b1d1ff-271e-48a5-8174-4385f8357258",
+      "name": "Score Plans1"
+    },
+    {
+      "parameters": {
+        "content": "Returns top 3 plans as per grading ",
+        "height": 80,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3520,
+        1168
+      ],
+      "typeVersion": 1,
+      "id": "8d1533e5-3711-4e74-be43-317983e5ddb4",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "jsCode": "let plans = '';\n\nitems.forEach((item) => {\n\n  plans += `\n${item.json.rank}. ${item.json.company} - ${item.json.plan}\n\nPremium: ₹${item.json.premium}\n\nBodily Injury:\n${item.json.bodily_injury}\n\nCollision:\n${item.json.collision}\n\nComprehensive:\n${item.json.comprehensive}\n\nScore:\n${item.json.score}\n\n--------------------------------\n`;\n\n});\n\nreturn [\n  {\n    json: {\n\n      customer: items[0].json.customer,\n\n      email: items[0].json.email,\n\n      plans\n\n    },\n\n    pairedItem: {\n      item: 0\n    }\n\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3536,
+        1056
+      ],
+      "id": "3dc687ed-e4c3-4c1b-ad82-8330a3ad0dd2",
+      "name": "Top 3 Plans1"
+    },
+    {
+      "parameters": {
+        "content": "Scors each plan as per customer requriments",
+        "height": 80,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3168,
+        1184
+      ],
+      "typeVersion": 1,
+      "id": "971e9fdd-f5bd-4335-953a-00da9feb3e1e",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "Filter all the plans and recommend best plan ",
+        "height": 80,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3344,
+        1168
+      ],
+      "typeVersion": 1,
+      "id": "8258234a-5949-4ab8-bcf4-7d573c19287a",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "jsCode": "items = items.filter(item => item.json.score >= 0);\n\nitems.sort((a, b) => b.json.score - a.json.score);\n\nconst top3 = items.slice(0, 3);\n\nreturn top3.map((item, index) => {\n\n  return {\n    json: {\n\n      rank: index + 1,\n\n      customer: item.json.customer,\n\n      email: item.json.email,\n\n      company: item.json.company,\n\n      plan: item.json.plan,\n\n      premium: item.json.premium,\n\n      bodily_injury:\n        `${item.json.BI_per_person}/${item.json.BI_per_accident}`,\n\n      collision:\n        `${item.json.collision_coverage}/${item.json.collision_deductible}`,\n\n      comprehensive:\n        `${item.json.comp_coverage}/${item.json.comp_deductible}`,\n\n      score:\n        item.json.score\n    }\n  };\n\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        1056
+      ],
+      "id": "d84f35ce-9d04-4544-8539-eac5e8598d4a",
+      "name": "Best plan1"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "Insurance",
+        "emailType": "text",
+        "message": "=Dear Customer,\n\nI hope this message finds you well. \n\nI am writing to inform you that the information we received from you was invalid, and as a result, we are unable to proceed further with your request. We understand that this may be disappointing, and we sincerely apologize for any inconvenience this may cause.\n\nTo assist you better, please review the information you provided and send us the correct details at your earliest convenience. We are here to help, and once we have the valid information, we can move forward without delay.\n\nThank you for your understanding. If you have any questions or require further assistance, please do not hesitate to reach out.\n\nBest regards,",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3696,
+        1056
+      ],
+      "id": "3a28ee58-36c4-4699-9d61-83cdc3f45e95",
+      "name": "Send a message1",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "gmailOAuth2 (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        864
+      ],
+      "id": "3be02bf5-b5e0-4809-aca8-5f0f5b8e53b4",
+      "name": "Prepare Clients"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('On form submission1').item.json.Email }}",
+        "subject": "Insurance",
+        "emailType": "text",
+        "message": "=Dear {{ $('On form submission1').item.json['First Name '] }},\n\nI hope this message finds you well. \n\nI am writing to inform you that the information {{ $json.errorReason }} we received from you was invalid, and as a result, we are unable to proceed further with your request. We understand that this may be disappointing, and we sincerely apologize for any inconvenience this may cause.\n\nTo assist you better, please review the information you provided and send us the correct details at your earliest convenience. We are here to help, and once we have the valid information, we can move forward without delay.\n\nThank you for your understanding. If you have any questions or require further assistance, please do not hesitate to reach out.\n\nBest regards,",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2432,
+        992
+      ],
+      "id": "b0d300fb-5f42-42e8-ba91-fd374824b78e",
+      "name": "Send a message",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "gmailOAuth2 (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Role:\nYou are a expert data analyst with 15 years of experience.\n\nYour ONLY responsibility is:\n\n1. Validate incoming form data\n2. Normalize clean data\n3. Return the SAME validated data\n4. Return validation errors if invalid\n\nCRITICAL RULES:\n\n* NEVER modify user intent\n* NEVER hallucinate values\n* NEVER create extra fields\n* ONLY validate and return cleaned input\n* ALWAYS return valid JSON only\n* DO NOT return markdown\n* DO NOT return explanations\n* DO NOT wrap response in ```json\n\n---\n\n## INPUT DATA\n\n{{ JSON.stringify($json) }}\n\n---\n\n## INPUT FIELDS\n\nThe workflow receives these fields:\n\n* first_name\n* last_name\n* age\n* email\n* budget\n* required_coverages\n\n---\n\n## VALIDATION RULES\n\n1. FIRST NAME\n\n* Required\n* Only alphabets\n* No spaces\n* Length: 2-30\n\nRegex:\n^[A-Za-z]{2,30}$\n\nError:\n\"error : First name must contain only letters.\"\n\n---\n\n2. LAST NAME\n\n* Required\n* Only alphabets and spaces\n* Length: 1-30\n\nRegex:\n^[A-Za-z ]{1,30}$\n\nError:\n\" error : Last name contains invalid characters.\"\n\n---\n\n3. AGE\n\n* Required\n* Integer only\n* Between 18 and 100\n\nError:\n\"error : Age must be between 18 and 100.\"\n\n---\n\n4. EMAIL\n\n* Required\n* Valid email format\n\nRegex:\n^[^\\s@]+@[^\\s@]+.[^\\s@]+$\n\nError:\n\" error : Invalid email address.\"\n\n---\n\n5. BUDGET\n\n* Required\n* Numeric\n* Greater than 0\n* Minimum: 1000\n\nError:\n\"error : Budget must be a valid positive number.\"\n\n---\n\n6. REQUIRED COVERAGES\n\nAllowed values ONLY:\n\n* BI_per_person\n* BI_per_accident\n* collision_coverage\n* collision_deductible\n* comp_coverage\n* comp_deductible\n\nRules:\n\n* Must be array\n* At least one value required\n* Reject unknown values\n\nError:\n\"error : Invalid coverage selection.\"\n\n---\n\n## NORMALIZATION RULES\n\nIf valid:\n\n* Trim spaces\n* Convert email to lowercase\n* Convert age to integer\n* Convert budget to number\n* Keep same required_coverages array\n\n---\n\n## SUCCESS RESPONSE FORMAT\n\n{\n  \"hasError\": false,\n  \"errors\": [],\n  \"normalized_data\": {\n    \"first_name\": \"\",\n    \"last_name\": \"\",\n    \"age\": 0,\n    \"email\": \"\",\n    \"budget\": 0,\n    \"required_coverages\": []\n  }\n}\n\n---\n\n## ERROR RESPONSE FORMAT\n\n{\n  \"hasError\": true,\n  \"errors\": {\n    \"field_name\": \"validation message\"\n  },\n  \"normalized_data\": null\n}\n\n---\n\n## SUCCESS RESPONSE FORMAT\n\n{\n  \"hasError\": false,\n  \"errors\": [],\n  \"normalized_data\": {\n    \"first_name\": \"\",\n    \"last_name\": \"\",\n    \"age\": 0,\n    \"email\": \"\",\n    \"budget\": 0,\n    \"required_coverages\": []\n  }\n}\n\n---\n\n## ERROR RESPONSE FORMAT\n\n{\n  \"hasError\": true,\n  \"errors\": {\n    \"field_name\": \"validation message\"\n  },\n  \"normalized_data\": null\n}\n\n---\n\n## SUCCESS RESPONSE FORMAT\n\n{\n  \"hasError\": false,\n  \"errors\": [],\n  \"normalized_data\": {\n    \"first_name\": \"\",\n    \"last_name\": \"\",\n    \"age\": 0,\n    \"email\": \"\",\n    \"budget\": 0,\n    \"required_coverages\": []\n  }\n}\n\n---\n\n## ERROR RESPONSE FORMAT\n\n{\n  \"hasError\": true,\n  \"errors\": {\n    \"field_name\": \"validation message\"\n  },\n  \"normalized_data\": null\n}\n\n---\n\n## STRICT OUTPUT RULES\n\n* Output JSON only## SUCCESS RESPONSE FORMAT\n\n{\n  \"hasError\": false,\n  \"errors\": [],\n  \"normalized_data\": {\n    \"first_name\": \"\",\n    \"last_name\": \"\",\n    \"age\": 0,\n    \"email\": \"\",\n    \"budget\": 0,\n    \"required_coverages\": []\n  }\n}\n\n---\n\n## ERROR RESPONSE FORMAT\n\n{\n  \"hasError\": true,\n  \"errors\": {\n    \"field_name\": \"validation message\"\n  },\n  \"normalized_data\": null\n}\n\n---\n\n## SUCCESS RESPONSE FORMAT\n\n{\n  \"hasError\": false,\n  \"errors\": [],\n  \"normalized_data\": {\n    \"first_name\": \"\",\n    \"last_name\": \"\",\n    \"age\": 0,\n    \"email\": \"\",\n    \"budget\": 0,\n    \"required_coverages\": []\n  }\n}\n\n---\n\n## ERROR RESPONSE FORMAT\n\n{\n  \"hasError\": true,\n  \"errors\": {\n    \"field_name\": \"validation message\"\n  },\n  \"normalized_data\": null\n}\n\n---\n\n## STRICT OUTPUT RULES\n\n* Output JSON only\n* No markdown\n* No explanations\n* No comments\n* No extra text\n* No recommendations\n* No additional fields\n* ALWAYS include:\n  - hasError\n  - errors\n  - normalized_data",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1680,
+        864
+      ],
+      "id": "3c9e68a1-5973-40a5-b156-890c31df1adf",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "97be130a-3149-4d1e-9505-e179148f6eb5",
+              "leftValue": "={{ $json.hasError }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2464,
+        864
+      ],
+      "id": "87372342-64e6-4ede-b6fa-dc2d5f6de672",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = String($json.output || \"\").trim();\n\nlet hasError = false;\nlet errorReason = \"\";\n\nlet parsed;\n\ntry {\n\n  // Remove markdown\n  const cleaned = response\n    .replace(/```json/g, \"\")\n    .replace(/```/g, \"\")\n    .trim();\n\n  parsed = JSON.parse(cleaned);\n\n  // ONLY use hasError from AI response\n  hasError = parsed.hasError === true;\n\n  // Extract errors\n  if (hasError) {\n\n    if (Array.isArray(parsed.errors)) {\n\n      errorReason = parsed.errors.join(\", \");\n\n    } else if (\n      parsed.errors &&\n      typeof parsed.errors === \"object\"\n    ) {\n\n      errorReason = Object.values(parsed.errors).join(\", \");\n\n    } else {\n\n      errorReason = \"Validation failed\";\n    }\n  }\n\n} catch (e) {\n\n  hasError = true;\n\n  errorReason = \"Invalid JSON response\";\n}\n\nreturn [\n  {\n    json: {\n      ...$json,\n      hasError,\n      errorReason,\n      parsedResponse: parsed || null\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2144,
+        864
+      ],
+      "id": "5d9af2c8-95af-492a-bfc4-a79f5b980806",
+      "name": "Checking Errors1"
+    },
+    {
+      "parameters": {
+        "formTitle": "Insurance",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "First Name ",
+              "fieldLabel": "First name ",
+              "requiredField": true
+            },
+            {
+              "fieldName": "Last Name",
+              "fieldLabel": "Last Name",
+              "requiredField": true
+            },
+            {
+              "fieldName": "Age",
+              "fieldLabel": "Age",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldName": "Budget",
+              "fieldLabel": "Budget",
+              "fieldType": "number",
+              "placeholder": "Example : 5000",
+              "requiredField": true
+            },
+            {
+              "fieldName": "Coverages requries",
+              "fieldLabel": "Coverage Required",
+              "fieldType": "checkbox",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "BI_per_person"
+                  },
+                  {
+                    "option": "BI_per_accident"
+                  },
+                  {
+                    "option": "collision_coverage"
+                  },
+                  {
+                    "option": "collision_deductible"
+                  },
+                  {
+                    "option": "comp_coverage"
+                  },
+                  {
+                    "option": "comp_deductible"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldName": "Email",
+              "fieldLabel": "Email ",
+              "fieldType": "email",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.4,
+      "position": [
+        544,
+        1008
+      ],
+      "id": "b25d3939-98af-441e-8327-5ba278d5ac63",
+      "name": "On form submission1"
+    },
+    {
+      "parameters": {
+        "content": "returns all the fields form Form",
+        "height": 80,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1344,
+        976
+      ],
+      "typeVersion": 1,
+      "id": "11767c8f-f6be-44c4-bc5c-c92315a74148",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "carrier",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "d116dba7-201f-4e0e-9da3-f9a042682113",
+      "name": "Get Carriers1",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        800,
+        1168
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "returns all the carries",
+        "height": 80,
+        "width": 160
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2016,
+        1280
+      ],
+      "typeVersion": 1,
+      "id": "ba2ad85d-ff4d-4aba-b2a1-296f92ecae34",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n\n  item.json.required_coverages =\n    String(item.json.required_coverages || \"\")\n      .split(\",\")\n      .map(v => v.trim());\n\n  return item;\n\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        864
+      ],
+      "id": "9db0a74d-7486-4a80-b9f1-8e4fc3da2bb3",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "carrier",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 906322937,
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=906322937"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $('Top 3 Plans1').item.json.email }}",
+            "Email sent valid": "Yes"
+          },
+          "matchingColumns": [
+            "Email"
+          ],
+          "schema": [
+            {
+              "id": "Sno",
+              "displayName": "Sno",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First Name",
+              "displayName": "First Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last Name",
+              "displayName": "Last Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Age",
+              "displayName": "Age",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Budget",
+              "displayName": "Budget",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Coverages requries ",
+              "displayName": "Coverages requries ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email sent invalid",
+              "displayName": "Email sent invalid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email sent valid",
+              "displayName": "Email sent valid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3904,
+        1056
+      ],
+      "id": "3f38d0f8-33ff-4d08-9298-c5aff66d66a8",
+      "name": "Update row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "carrier",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 906322937,
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=906322937"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $('Test sheet').item.json.Email }}",
+            "Email sent invalid": "Yes"
+          },
+          "matchingColumns": [
+            "Email"
+          ],
+          "schema": [
+            {
+              "id": "First Name",
+              "displayName": "First Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last Name",
+              "displayName": "Last Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Age",
+              "displayName": "Age",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Budget",
+              "displayName": "Budget",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Coverages requries ",
+              "displayName": "Coverages requries ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email sent invalid",
+              "displayName": "Email sent invalid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email sent valid",
+              "displayName": "Email sent valid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2640,
+        992
+      ],
+      "id": "fcaf55b9-ad8c-4fc4-a21e-1c15e59d6a12",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Validate the give input form the customer",
+        "height": 80,
+        "width": 176
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1728,
+        1024
+      ],
+      "typeVersion": 1,
+      "id": "c34fd20b-4cc1-4522-96b3-c7c5b1b31eed",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Checks for the error and returns error reason",
+        "height": 80,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2112,
+        992
+      ],
+      "typeVersion": 1,
+      "id": "9a0bef3a-ff20-4a24-9ef2-37b40da84f26",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "invalid information sent ",
+        "height": 80,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2416,
+        1120
+      ],
+      "typeVersion": 1,
+      "id": "99d65ba3-d938-49a6-8940-c5f7fdd76ab2",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "carrier",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 906322937,
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=906322937"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "First Name": "={{ $json['First Name '] }}",
+            "Last Name": "={{ $json['Last Name'] }}",
+            "Age": "={{ $json.Age }}",
+            "Budget": "={{ $json.Budget }}",
+            "Coverages requries ": "={{ $json['Coverages requries'] }}",
+            "Email": "={{ $json.Email }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "First Name",
+              "displayName": "First Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last Name",
+              "displayName": "Last Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Age",
+              "displayName": "Age",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Budget",
+              "displayName": "Budget",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Coverages requries ",
+              "displayName": "Coverages requries ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email sent invalid",
+              "displayName": "Email sent invalid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email sent valid",
+              "displayName": "Email sent valid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1056,
+        864
+      ],
+      "id": "0a824b2b-8e56-4c87-898f-e74f8542a733",
+      "name": "Test sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1632,
+        1072
+      ],
+      "id": "e3feb55a-80e1-4622-af21-95aaf3953ab6",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googlePalmApi (configure in n8n)"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Merge Both1": {
+      "main": [
+        [
+          {
+            "node": "Score Plans1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Plans1": {
+      "main": [
+        [
+          {
+            "node": "Merge Both1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Score Plans1": {
+      "main": [
+        [
+          {
+            "node": "Best plan1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Top 3 Plans1": {
+      "main": [
+        [
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Best plan1": {
+      "main": [
+        [
+          {
+            "node": "Top 3 Plans1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Clients": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Checking Errors1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Merge Both1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Checking Errors1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On form submission1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Carriers1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Carriers1": {
+      "main": [
+        [
+          {
+            "node": "Prepare Plans1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Test sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message1": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test sheet": {
+      "main": [
+        [
+          {
+            "node": "Prepare Clients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
