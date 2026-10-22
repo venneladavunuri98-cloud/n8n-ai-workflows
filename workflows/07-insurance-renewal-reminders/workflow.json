@@ -1,0 +1,1048 @@
+{
+  "name": "Insurance Renewal Reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1040,
+        1872
+      ],
+      "id": "7ead6587-9c14-43c7-bdcd-90d9acdc0054",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "insurance renewal",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -800,
+        1872
+      ],
+      "id": "b2e4dd63-2fbf-4dd0-ba25-bec09fae0f88",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ═══════════════════════════════════════════════════════════\n// NODE: Calculate Days + Block Condition Check\n//  Added 'non-renewal' and 'endorsement' to blocked list\n//  Only policies with Policy Status = 'active' proceed\n//  IST date calculation remains, but we also set _istToday for debug\n//  Skipping rows with no Expiration Date gracefully\n//  Added _daysToExpiry for monitoring\n// ═══════════════════════════════════════════════════════════\n\nconst now = new Date();\n\n// Get today in IST as YYYY-MM-DD (robust cross-platform)\nconst today = now.toLocaleDateString('en-CA', {\n  timeZone: 'Asia/Kolkata'\n});\n\n// BLOCK CONDITIONS — these policies must NEVER get reminders\nconst blockedStatuses = [\n  'lapsed', 'cancelled', 'withdrawn', 'expired',\n  'void', 'terminated', 'non-renewal', 'endorsement'\n];\n\n// ALLOWED CONDITIONS — only these can receive reminder emails\nconst allowedStatuses = ['active', 'new', 'renewal'];\n\n// Helper: subtract N days from a date string → YYYY-MM-DD\nfunction subtractDays(dateStr, days) {\n  const d = new Date(dateStr);\n  d.setUTCDate(d.getUTCDate() - days);\n  return d.toISOString().split('T')[0];\n}\n\n// Helper: parse expiration date from multiple column name variants\nfunction getExpDate(json) {\n  return (\n    json['Expiration Date'] ||\n    json['ExpirationDate'] ||\n    json['expirationDate'] ||\n    json['expiry_date'] ||\n    json['ExpiryDate'] ||\n    ''\n  ).toString().trim();\n}\n\n// Helper: calculate days remaining until expiry\nfunction daysToExpiry(dateStr) {\n  const exp = new Date(dateStr);\n  const todayMs = new Date(today);\n  return Math.ceil((exp - todayMs) / (1000 * 60 * 60 * 24));\n}\n\nconst rows = $input.all();\n\nreturn rows.map(item => {\n\n  const transaction = (item.json['Policy transaction'] || '')\n    .toString().trim().toLowerCase();\n\n  // ── BLOCK CHECK ──────────────────────────────────────────────\n  if (blockedStatuses.includes(transaction)) {\n    return {\n      json: {\n        ...item.json,\n        today,\n        day_90: '',\n        day_60: '',\n        day_30: '',\n        _blocked: true,\n        _blockReason: 'Policy transaction is \"' + transaction + '\" - blocked from reminders',\n        _stage: 'blocked',\n        _daysToExpiry: null\n      }\n    };\n  }\n\n  // ── ALLOWED CHECK ─────────────────────────────────────────────\n  if (!allowedStatuses.includes(transaction)) {\n    return {\n      json: {\n        ...item.json,\n        today,\n        day_90: '',\n        day_60: '',\n        day_30: '',\n        _blocked: true,\n        _blockReason: 'Unknown transaction type \"' + transaction + '\" - skipped for safety',\n        _stage: 'skipped',\n        _daysToExpiry: null\n      }\n    };\n  }\n\n  // ── DATE VALIDATION ───────────────────────────────────────────\n  const rawDate = getExpDate(item.json);\n\n  if (!rawDate) {\n    return {\n      json: {\n        ...item.json,\n        today,\n        day_90: '',\n        day_60: '',\n        day_30: '',\n        _blocked: true,\n        _blockReason: 'Missing Expiration Date — cannot calculate reminders',\n        _stage: 'error_missing_date',\n        _daysToExpiry: null\n      }\n    };\n  }\n\n  const expDate = new Date(rawDate);\n  if (isNaN(expDate.getTime())) {\n    return {\n      json: {\n        ...item.json,\n        today,\n        day_90: '',\n        day_60: '',\n        day_30: '',\n        _blocked: true,\n        _blockReason: 'Invalid Expiration Date format: ' + rawDate,\n        _stage: 'error_invalid_date',\n        _daysToExpiry: null\n      }\n    };\n  }\n\n  // ── ALREADY EXPIRED CHECK ─────────────────────────────────────\n  const remaining = daysToExpiry(rawDate);\n  if (remaining < 0) {\n    return {\n      json: {\n        ...item.json,\n        today,\n        day_90: subtractDays(rawDate, 90),\n        day_60: subtractDays(rawDate, 60),\n        day_30: subtractDays(rawDate, 30),\n        _blocked: true,\n        _blockReason: 'Policy already expired ' + Math.abs(remaining) + ' day(s) ago',\n        _stage: 'already_expired',\n        _daysToExpiry: remaining\n      }\n    };\n  }\n\n  // ── CALCULATE REMINDER DATES ──────────────────────────────────\n  const day_90 = subtractDays(rawDate, 90);\n  const day_60 = subtractDays(rawDate, 60);\n  const day_30 = subtractDays(rawDate, 30);\n\n  return {\n    json: {\n      ...item.json,\n      today,\n      day_90,\n      day_60,\n      day_30,\n      _blocked: false,\n      _stage: 'dates_calculated',\n      _daysToExpiry: remaining\n    }\n  };\n\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        1872
+      ],
+      "id": "96f41c32-0f9b-4629-a3c4-c32bca84454e",
+      "name": "Calculate days"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ═══════════════════════════════════════════════════════════\n// NODE: Policy Status\n//  Status 'active' is ONLY assigned when transaction is\n//        active/new/renewal AND the policy is NOT blocked\n//  Added non-renewal and endorsement handling\n//  Added _statusTimestamp for audit trail\n// ═══════════════════════════════════════════════════════════\n\nconst rows = $input.all();\n\nreturn rows.map(item => {\n\n  const transaction = (item.json['Policy transaction'] || '')\n    .toString().trim().toLowerCase();\n\n  const blocked = item.json._blocked === true;\n\n  let policyStatus;\n\n  if (transaction === 'lapsed')           policyStatus = 'lapsed';\n  else if (transaction === 'cancelled')   policyStatus = 'cancelled';\n  else if (transaction === 'withdrawn')   policyStatus = 'withdrawn';\n  else if (transaction === 'expired')     policyStatus = 'expired';\n  else if (transaction === 'void')        policyStatus = 'void';\n  else if (transaction === 'terminated')  policyStatus = 'terminated';\n  else if (transaction === 'non-renewal') policyStatus = 'non-renewal';\n  else if (transaction === 'endorsement') policyStatus = 'endorsement';\n  else if (['active', 'new', 'renewal'].includes(transaction) && !blocked) {\n    policyStatus = 'active';\n  } else if (['active', 'new', 'renewal'].includes(transaction) && blocked) {\n    // allowed transaction type but blocked for another reason (e.g. expired date)\n    policyStatus = 'inactive';\n  } else {\n    policyStatus = 'unknown';\n  }\n\n  return {\n    json: {\n      ...item.json,\n      'Policy Status': policyStatus,\n      _stage: 'status_assigned',\n      _statusTimestamp: new Date().toISOString()\n    }\n  };\n\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        1872
+      ],
+      "id": "315c6231-5c33-4d5e-8d4d-e0ecbc579d3c",
+      "name": "Policy Status"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "insurance renewal",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Policy Number": "={{ $json['Policy Number'] }}",
+            "day_90": "={{ $json.day_90 }}",
+            "day_60": "={{ $json.day_60 }}",
+            "day_30": "={{ $json.day_30 }}",
+            "Policy Status": "={{ $json['Policy Status'] }}"
+          },
+          "matchingColumns": [
+            "Policy Number"
+          ],
+          "schema": [
+            {
+              "id": "S.NO",
+              "displayName": "S.NO",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Policy Number",
+              "displayName": "Policy Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Insurance Carrier Name",
+              "displayName": "Insurance Carrier Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Effective Date",
+              "displayName": "Effective Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Expiration Date",
+              "displayName": "Expiration Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Assigned Agent",
+              "displayName": "Assigned Agent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Customer Name",
+              "displayName": "Customer Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Customer email ID",
+              "displayName": "Customer email ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Agent Email ID",
+              "displayName": "Agent Email ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Client Phone",
+              "displayName": "Client Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Premium",
+              "displayName": "Premium",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email_sent",
+              "displayName": "Email_sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "day_90",
+              "displayName": "day_90",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email_sent_90",
+              "displayName": "email_sent_90",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "day_60",
+              "displayName": "day_60",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email_sent_60",
+              "displayName": "email_sent_60",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "day_30",
+              "displayName": "day_30",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email_sent_30",
+              "displayName": "email_sent_30",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Policy transaction",
+              "displayName": "Policy transaction",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Policy Status",
+              "displayName": "Policy Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -80,
+        1872
+      ],
+      "id": "72c5547e-ca51-41bf-8afd-59b6adf355a9",
+      "name": "Update dates & status",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ═══════════════════════════════════════════════════════════\n// NODE: Check 90 Day Reminder\n// Added explicit Policy Status === 'active' guard\n//        Previously only checked _blocked flag; now double-checks\n//        the actual Policy Status written to sheet for accuracy\n// Added _check90Timestamp for audit\n// Detailed reason string for easier debugging\n// ═══════════════════════════════════════════════════════════\n\nconst rows = $input.all();\n\nreturn rows.map(item => {\n\n  const today        = item.json.today || '';\n  const day_90       = item.json.day_90 || '';\n  const blocked      = item.json._blocked === true;\n  const policyStatus = (item.json['Policy Status'] || '').toLowerCase();\n  const alreadySent  = (item.json.email_sent_90 || '').toLowerCase() === 'sent';\n\n  // CRITICAL: Only send if status is explicitly 'active'\n  const isActive = policyStatus === 'active';\n\n  const shouldSend = (today === day_90) && !blocked && isActive && !alreadySent;\n\n  return {\n    json: {\n      ...item.json,\n      _check90: shouldSend,\n      _check90Reason: shouldSend\n        ? '90-day reminder due today for active policy'\n        : [\n            'today=' + today,\n            'day_90=' + day_90,\n            'blocked=' + blocked,\n            'status=' + policyStatus,\n            'alreadySent=' + alreadySent\n          ].join(' | ')\n    }\n  };\n\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        1760
+      ],
+      "id": "eb1c696c-7bcb-4829-966a-ed0fc773200d",
+      "name": "Check 90 Day Reminder1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-90-true",
+              "leftValue": "={{ $json._check90 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        1760
+      ],
+      "id": "0370f1a9-7a8f-4efe-88cd-d31c8439c223",
+      "name": "If 90 Day1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ═══════════════════════════════════════════════════════════\n// NODE: Check 60 Day Reminder\n//  Added explicit Policy Status === 'active' guard\n//  Added _check60Timestamp and improved reason string\n// ═══════════════════════════════════════════════════════════\n\nconst rows = $input.all();\n\nreturn rows.map(item => {\n\n  const today        = item.json.today || '';\n  const day_60       = item.json.day_60 || '';\n  const blocked      = item.json._blocked === true;\n  const policyStatus = (item.json['Policy Status'] || '').toLowerCase();\n  const alreadySent  = (item.json.email_sent_60 || '').toLowerCase() === 'sent';\n\n  const isActive = policyStatus === 'active';\n\n  const shouldSend = (today === day_60) && !blocked && isActive && !alreadySent;\n\n  return {\n    json: {\n      ...item.json,\n      _check60: shouldSend,\n      _check60Reason: shouldSend\n        ? '60-day reminder due today for active policy'\n        : [\n            'today=' + today,\n            'day_60=' + day_60,\n            'blocked=' + blocked,\n            'status=' + policyStatus,\n            'alreadySent=' + alreadySent\n          ].join(' | ')\n    }\n  };\n\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        1888
+      ],
+      "id": "32a41aed-a3f9-422f-9358-af458cd70089",
+      "name": "Check 60 Day Reminder1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-60-true",
+              "leftValue": "={{ $json._check60 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        1888
+      ],
+      "id": "53570614-f8e7-4d48-8ce7-0da86629c46e",
+      "name": "If 60 Day1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ═══════════════════════════════════════════════════════════\n// NODE: Check 30 Day Reminder\n//  Added explicit Policy Status === 'active' guard\n//  Added improved reason string for debugging\n// ═══════════════════════════════════════════════════════════\n\nconst rows = $input.all();\n\nreturn rows.map(item => {\n\n  const today        = item.json.today || '';\n  const day_30       = item.json.day_30 || '';\n  const blocked      = item.json._blocked === true;\n  const policyStatus = (item.json['Policy Status'] || '').toLowerCase();\n  const alreadySent  = (item.json.email_sent_30 || '').toLowerCase() === 'sent';\n\n  const isActive = policyStatus === 'active';\n\n  const shouldSend = (today === day_30) && !blocked && isActive && !alreadySent;\n\n  return {\n    json: {\n      ...item.json,\n      _check30: shouldSend,\n      _check30Reason: shouldSend\n        ? '30-day reminder due today for active policy'\n        : [\n            'today=' + today,\n            'day_30=' + day_30,\n            'blocked=' + blocked,\n            'status=' + policyStatus,\n            'alreadySent=' + alreadySent\n          ].join(' | ')\n    }\n  };\n\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        2032
+      ],
+      "id": "9484268c-4c46-4b74-a9a2-2e6549a27e53",
+      "name": "Check 30 Day Reminder1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-30-true",
+              "leftValue": "={{ $json._check30 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        2032
+      ],
+      "id": "dcbb4fd6-3468-470b-bbda-9b5a487c022f",
+      "name": "If 30 Day1"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Get row(s) in sheet').item.json['Customer email ID'] }}",
+        "subject": "Action Required: Your Insurance Policy Expires in 90 Days – Policy {{ $json['Policy Number'] }}",
+        "emailType": "text",
+        "message": "=Dear {{ $('Get row(s) in sheet').item.json['Customer Name'] }},\n\nThis is an advance notice that your insurance policy is approaching its expiration date.\n\n------------------------------------------------------------\nPOLICY DETAILS\n------------------------------------------------------------\nPolicy Number     : {{ $json['Policy Number'] }}\nInsurance Carrier : {{ $('Get row(s) in sheet').item.json['Insurance Carrier Name'] }}\nEffective Date    : {{ $('Get row(s) in sheet').item.json['Effective Date'] }}\nExpiration Date   : {{ $('Get row(s) in sheet').item.json['Expiration Date'] }}\nPremium           : {{ $('Get row(s) in sheet').item.json['Premium'] }}\nPolicy Status     : Active\n------------------------------------------------------------\n\nYou have 90 days remaining before your coverage expires on {{ $('Get row(s) in sheet').item.json['Expiration Date'] }}.\n\nWe strongly recommend starting your renewal process early to ensure there are no gaps in your coverage. Please contact your assigned agent at your earliest convenience.\n\nYOUR ASSIGNED AGENT\nName  : {{ $('Get row(s) in sheet').item.json['Assigned Agent'] }}\nEmail : {{ $('Get row(s) in sheet').item.json['Agent Email ID'] }}\n\nIf you have any questions or need assistance, please do not hesitate to reach out.\n\nThank you for choosing {{ $('Get row(s) in sheet').item.json['Insurance Carrier Name'] }}.\n\nBest regards,\n{{ $('Get row(s) in sheet').item.json['Assigned Agent'] }}\n{{ $('Get row(s) in sheet').item.json['Insurance Carrier Name'] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        656,
+        1744
+      ],
+      "id": "4ebc7446-560a-4ded-8536-65719d8fca7b",
+      "name": "90th day alert",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "gmailOAuth2 (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Get row(s) in sheet').item.json['Customer email ID'] }}",
+        "subject": "Reminder: Your Insurance Policy Expires in 60 Days – Policy {{ $json['Policy Number'] }}",
+        "emailType": "text",
+        "message": "=Dear {{ $('Get row(s) in sheet').item.json['Customer Name'] }},\n\nThis is a friendly reminder that your insurance policy is expiring in 60 days.\n\n------------------------------------------------------------\nPOLICY DETAILS\n------------------------------------------------------------\nPolicy Number     : {{ $json['Policy Number'] }}\nInsurance Carrier : {{ $('Get row(s) in sheet').item.json['Insurance Carrier Name'] }}\nEffective Date    : {{ $('Get row(s) in sheet').item.json['Effective Date'] }}\nExpiration Date   : {{ $('Get row(s) in sheet').item.json['Expiration Date'] }}\nPremium           : {{ $('Get row(s) in sheet').item.json['Premium'] }}\nPolicy Status     : Active\n------------------------------------------------------------\n\nYou now have 60 days remaining before your coverage expires on {{ $('Get row(s) in sheet').item.json['Expiration Date'] }}.\n\nTo avoid any lapse in your coverage, please begin your renewal process as soon as possible. Contact your assigned agent to discuss your options and ensure a smooth transition.\n\nYOUR ASSIGNED AGENT\nName  : {{ $('Get row(s) in sheet').item.json['Assigned Agent'] }}\nEmail : {{ $('Get row(s) in sheet').item.json['Agent Email ID'] }}\n\nWe are here to assist you every step of the way.\n\nThank you for trusting {{ $('Get row(s) in sheet').item.json['Insurance Carrier Name'] }} with your coverage.\n\nBest regards,\n{{ $('Get row(s) in sheet').item.json['Assigned Agent'] }}\n{{ $('Get row(s) in sheet').item.json['Insurance Carrier Name'] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        656,
+        1872
+      ],
+      "id": "4e970e63-4e27-4bbd-b0fe-b7d0fd340387",
+      "name": "60th day alert",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "gmailOAuth2 (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Get row(s) in sheet').item.json['Customer email ID'] }}",
+        "subject": "URGENT: Your Insurance Policy Expires in 30 Days – Policy {{ $json['Policy Number'] }}",
+        "emailType": "text",
+        "message": "=Dear {{ $('Get row(s) in sheet').item.json['Customer Name'] }},\n\nURGENT NOTICE: Your insurance policy is expiring in just 30 days.\n\n------------------------------------------------------------\nPOLICY DETAILS\n------------------------------------------------------------\nPolicy Number     : {{ $json['Policy Number'] }}\nInsurance Carrier : {{ $('Get row(s) in sheet').item.json['Insurance Carrier Name'] }}\nEffective Date    : {{ $('Get row(s) in sheet').item.json['Effective Date'] }}\nExpiration Date   : {{ $('Get row(s) in sheet').item.json['Expiration Date'] }}\nPremium           : {{ $('Get row(s) in sheet').item.json['Premium'] }}\nPolicy Status     : Active\n------------------------------------------------------------\n\nYour coverage will lapse on {{ $('Get row(s) in sheet').item.json['Expiration Date'] }} if you do not renew immediately.\n\nA lapse in coverage can expose you to significant financial risk. Please contact your assigned agent TODAY to complete the renewal process.\n\nYOUR ASSIGNED AGENT\nName         : {{ $('Get row(s) in sheet').item.json['Assigned Agent'] }}\nEmail        : {{ $('Get row(s) in sheet').item.json['Agent Email ID'] }}\nClient Phone : {{ $('Get row(s) in sheet').item.json['Client Phone'] }}\n\nDo not delay — renew now to stay protected.\n\nThank you for being a valued customer of {{ $('Get row(s) in sheet').item.json['Insurance Carrier Name'] }}.\n\nBest regards,\n{{ $('Get row(s) in sheet').item.json['Assigned Agent'] }}\n{{ $('Get row(s) in sheet').item.json['Insurance Carrier Name'] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        656,
+        2016
+      ],
+      "id": "354c180f-08c8-40f0-a94f-05fa429a1281",
+      "name": "30th day alert",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "gmailOAuth2 (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "insurance renewal",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Policy Number": "={{ $('Get row(s) in sheet').item.json['Policy Number'] }}",
+            "email_sent_90": "Sent"
+          },
+          "matchingColumns": [
+            "Policy Number"
+          ],
+          "schema": [
+            {
+              "id": "Policy Number",
+              "displayName": "Policy Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email_sent_90",
+              "displayName": "email_sent_90",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        896,
+        1744
+      ],
+      "id": "4ef91dc8-7f7d-4847-8eee-d3a98b66296b",
+      "name": "Mark email_sent_",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "insurance renewal",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Policy Number": "={{ $('Get row(s) in sheet').item.json['Policy Number'] }}",
+            "email_sent_60": "Sent"
+          },
+          "matchingColumns": [
+            "Policy Number"
+          ],
+          "schema": [
+            {
+              "id": "Policy Number",
+              "displayName": "Policy Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email_sent_60",
+              "displayName": "email_sent_60",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        896,
+        1872
+      ],
+      "id": "156fd063-16ba-4ee7-8a57-a14a51672a40",
+      "name": "Mark email_sent_61",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "insurance renewal",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Policy Number": "={{ $('Get row(s) in sheet').item.json['Policy Number'] }}",
+            "email_sent_30": "Sent"
+          },
+          "matchingColumns": [
+            "Policy Number"
+          ],
+          "schema": [
+            {
+              "id": "Policy Number",
+              "displayName": "Policy Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email_sent_30",
+              "displayName": "email_sent_30",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        896,
+        2016
+      ],
+      "id": "27225cfd-99fd-4396-a925-85bdc035e8f4",
+      "name": "Mark email_sent_31",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Schedule Trigger\nFires daily at 8:30 AM IST",
+        "height": 84,
+        "width": 184
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1088,
+        1792
+      ],
+      "typeVersion": 1,
+      "id": "1550b0d7-718e-42a3-84e3-05ff12158a54",
+      "name": "Note_S"
+    },
+    {
+      "parameters": {
+        "content": "Get all rows from Google Sheet\nLoads every policy record\nfor processing",
+        "height": 80,
+        "width": 168
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -848,
+        1792
+      ],
+      "typeVersion": 1,
+      "id": "3c5fd21a-d494-4b38-909c-fc5cfd6be03a",
+      "name": "Note_S7"
+    },
+    {
+      "parameters": {
+        "content": "Block Check + Date Calculator\nBlocked: lapsed, cancelled, withdrawn,\nexpired, void, terminated,\nnon-renewal, endorsement\n",
+        "height": 118,
+        "width": 208
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -624,
+        1760
+      ],
+      "typeVersion": 1,
+      "id": "190cdc18-1502-4c60-afcf-27aa3a4c84f2",
+      "name": "Note_S8"
+    },
+    {
+      "parameters": {
+        "content": "Policy Status Node\nNEW: 'active' only assigned when\ntransaction is active/new/renewal\nAND _blocked is false\nNEW: 'inactive' for allowed type\nbut blocked for another reason",
+        "height": 134,
+        "width": 236
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -384,
+        1744
+      ],
+      "typeVersion": 1,
+      "id": "a1278c4b-2ce6-4c52-9ed6-d612f4d8b1dc",
+      "name": "Note_S9"
+    },
+    {
+      "parameters": {
+        "content": "Update Sheet\nWrites day_90, day_60, day_30\nand Policy Status back to sheet\nfor every row every day",
+        "height": 142,
+        "width": 216
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -128,
+        1744
+      ],
+      "typeVersion": 1,
+      "id": "1cd6f7e6-ec84-4c4a-981c-9ab81a6e29a7",
+      "name": "Note_S10"
+    },
+    {
+      "parameters": {
+        "content": "Three parallel Check nodes\nNEW: Each now ALSO checks\nPolicy Status === 'active'\nPrevents emails to non-active\neven if _blocked slips through",
+        "height": 130
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        128,
+        2160
+      ],
+      "typeVersion": 1,
+      "id": "bddae30e-8f14-433c-b634-fb219e06ca20",
+      "name": "Note_S11"
+    },
+    {
+      "parameters": {
+        "content": "90/60/30-DAY PATH\nIf today = day_90/60/30\nAND Policy Status = 'active'\nAND not blocked\nAND email_sent != Sent\n→ Send plain text email + Mark Sent",
+        "height": 140,
+        "width": 280
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        352,
+        1632
+      ],
+      "typeVersion": 1,
+      "id": "9417dce9-efb7-4e23-9d08-43936ed25ea1",
+      "name": "Note_"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Calculate days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate days": {
+      "main": [
+        [
+          {
+            "node": "Policy Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy Status": {
+      "main": [
+        [
+          {
+            "node": "Update dates & status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update dates & status": {
+      "main": [
+        [
+          {
+            "node": "Check 90 Day Reminder1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check 60 Day Reminder1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check 30 Day Reminder1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check 90 Day Reminder1": {
+      "main": [
+        [
+          {
+            "node": "If 90 Day1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If 90 Day1": {
+      "main": [
+        [
+          {
+            "node": "90th day alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check 60 Day Reminder1": {
+      "main": [
+        [
+          {
+            "node": "If 60 Day1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If 60 Day1": {
+      "main": [
+        [
+          {
+            "node": "60th day alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check 30 Day Reminder1": {
+      "main": [
+        [
+          {
+            "node": "If 30 Day1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If 30 Day1": {
+      "main": [
+        [
+          {
+            "node": "30th day alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "90th day alert": {
+      "main": [
+        [
+          {
+            "node": "Mark email_sent_",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "60th day alert": {
+      "main": [
+        [
+          {
+            "node": "Mark email_sent_61",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "30th day alert": {
+      "main": [
+        [
+          {
+            "node": "Mark email_sent_31",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
