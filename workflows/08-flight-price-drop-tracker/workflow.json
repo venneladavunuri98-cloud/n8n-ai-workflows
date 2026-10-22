@@ -1,0 +1,612 @@
+{
+  "name": "Flight Price Drop Tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\nconst origin = (item['Origin '] || item.Origin || '').toString().trim().toUpperCase();\nconst destination = (item.Destination || '').toString().trim().toUpperCase();\nconst departureDate = item['Departure Date'];\nconst returnDate = item['Return Date'] || '';\nconst expectedPrice = parseFloat(item['expected price']);\nconst alertEmail = item['Alert email'];\n\nreturn {\n  json: {\n    origin,\n    destination,\n    departureDate,\n    returnDate,\n    tripType: returnDate ? 1 : 2, // 1 = round trip, 2 = one way (SerpApi Google Flights convention)\n    expectedPrice,\n    alertEmail,\n    rowNumber: item.row_number\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        1040
+      ],
+      "id": "e56eabb9-a077-49ef-b44e-9a9c9bed199c",
+      "name": "Prepare Search Params"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item.json;\nconst prep = $('Prepare Search Params').item.json;\n\nconst flights = [\n  ...(response.best_flights || []),\n  ...(response.other_flights || [])\n];\n\nlet lowestPrice = null;\nfor (const f of flights) {\n  if (f.price != null && (lowestPrice === null || f.price < lowestPrice)) {\n    lowestPrice = f.price;\n  }\n}\n\nreturn {\n  json: {\n    ...prep,\n    currentPrice: lowestPrice\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        1040
+      ],
+      "id": "ea8e097c-409b-4570-93fe-e53d24558d48",
+      "name": "Extract Lowest Price"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.currentPrice }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              },
+              "id": "eebee00c-1490-44b9-9e62-3cd42eb674a0"
+            },
+            {
+              "leftValue": "={{ $json.currentPrice }}",
+              "rightValue": "={{ $json.expectedPrice }}",
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              },
+              "id": "215d879c-0ce8-4f6a-b044-50b13ea9f430"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        1040
+      ],
+      "id": "1cb9d81d-71a2-42d9-ac30-03649459b07e",
+      "name": "IF Price Dropped"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.alertEmail }}",
+        "subject": "=Price Drop Alert: {{ $json.origin }} to {{ $json.destination }}",
+        "message": "=Good news! The flight price for your tracked route has dropped below your target.\n\nRoute: {{ $json.origin }} to {{ $json.destination }}\nDeparture: {{ $json.departureDate }}\nReturn: {{ $json.returnDate || 'One-way' }}\n\nYour target price: {{ $json.expectedPrice }}\nCurrent lowest price found: {{ $json.currentPrice }}\n\nBook soon before it changes again!",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1248,
+        928
+      ],
+      "id": "45082843-b246-4445-b5b9-e9c9b60b9014",
+      "name": "Send Alert Email",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "gmailOAuth2 (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Flight price dropp!!",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Read_Watchlist1').item.json.row_number }}",
+            "Last Checked Price": "={{ $json.currentPrice }}",
+            "Last Checked At": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Last Checked Price",
+              "displayName": "Last Checked Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Last Checked At",
+              "displayName": "Last Checked At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1520,
+        1056
+      ],
+      "id": "6f19b7e5-e65e-4f73-8ada-0ebfe787334f",
+      "name": "Update Watchlist",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "Capture the search",
+        "formFields": {
+          "values": [
+            {
+              "fieldName": "Origin ",
+              "fieldLabel": "Origin (3-letter airport code, e.g. HYD)",
+              "requiredField": true
+            },
+            {
+              "fieldName": "Destination",
+              "fieldLabel": "Destination (3-letter airport code, e.g. DXB)",
+              "requiredField": true
+            },
+            {
+              "fieldName": "Departure Date",
+              "fieldLabel": "Departure Date",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldName": "Return Date",
+              "fieldLabel": "Return Date",
+              "fieldType": "date"
+            },
+            {
+              "fieldName": "expected price",
+              "fieldLabel": "expected price"
+            },
+            {
+              "fieldName": "Alert email",
+              "fieldLabel": "Alert email",
+              "fieldType": "email"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.4,
+      "position": [
+        -128,
+        688
+      ],
+      "id": "f9b25614-47df-408d-a590-14ff1814e227",
+      "name": "On form submission1"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 4
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -128,
+        976
+      ],
+      "id": "25b33683-8158-4f7f-85d0-2dd36cf06eff",
+      "name": "Schedule Trigger1"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Flight price dropp!!",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Origin ": "={{ $json['Origin '] }}",
+            "Destination": "={{ $json.Destination }}",
+            "Return Date": "={{ $json['Return Date'] }}",
+            "Departure Date": "={{ $json['Departure Date'] }}",
+            "expected price": "={{ $json['expected price'] }}",
+            "Alert email": "={{ $json['Alert email'] }}",
+            "submittedAt": "={{ $json.submittedAt }}",
+            "formMode": "={{ $json.formMode }}",
+            "row_no": "="
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "row_no",
+              "displayName": "row_no",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Origin ",
+              "displayName": "Origin ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Destination",
+              "displayName": "Destination",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Departure Date",
+              "displayName": "Departure Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Return Date",
+              "displayName": "Return Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "expected price",
+              "displayName": "expected price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Alert email",
+              "displayName": "Alert email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "submittedAt",
+              "displayName": "submittedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "formMode",
+              "displayName": "formMode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        80,
+        688
+      ],
+      "id": "1beae5cd-bee2-42df-a5dd-7a49c984bd43",
+      "name": "Watchlist1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Flight price dropp!!",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        80,
+        976
+      ],
+      "id": "6bd0ef93-8e70-4c31-9a6a-7c988ac69742",
+      "name": "Read_Watchlist1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        288,
+        976
+      ],
+      "id": "1599c883-359a-4539-b7fe-59a76b01f980",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "engine",
+              "value": "google_flights"
+            },
+            {
+              "name": "departure_id",
+              "value": "={{ $json.origin }}"
+            },
+            {
+              "name": "arrival_id",
+              "value": "={{ $json.destination }}"
+            },
+            {
+              "name": "outbound_date",
+              "value": "={{ $json.departureDate }}"
+            },
+            {
+              "name": "return_date",
+              "value": "={{ $json.returnDate }}"
+            },
+            {
+              "name": "type",
+              "value": "={{ $json.tripType }}"
+            },
+            {
+              "name": "currency",
+              "value": "USD"
+            },
+            {
+              "name": "hl",
+              "value": "en"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        624,
+        1040
+      ],
+      "id": "abfd00e7-0c2c-40bc-8ac3-fdf20b538cd7",
+      "name": "HTTP Request1",
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "httpQueryAuth (configure in n8n)"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Prepare Search Params": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Lowest Price": {
+      "main": [
+        [
+          {
+            "node": "IF Price Dropped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Price Dropped": {
+      "main": [
+        [
+          {
+            "node": "Send Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Watchlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Alert Email": {
+      "main": [
+        [
+          {
+            "node": "Update Watchlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Watchlist": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On form submission1": {
+      "main": [
+        [
+          {
+            "node": "Watchlist1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Read_Watchlist1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read_Watchlist1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Prepare Search Params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Extract Lowest Price",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
