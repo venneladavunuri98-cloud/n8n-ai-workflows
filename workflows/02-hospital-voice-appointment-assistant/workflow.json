@@ -1,0 +1,1999 @@
+{
+  "name": "Hospital Voice Appointment Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Synergistic Hospitals",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "doctors",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -4432,
+        12960
+      ],
+      "id": "732b0c00-ca8c-4d64-8ada-9c297d53c37b",
+      "name": "Get Doctor for Cancel1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst { patientName, date, doctorId, startSearch, endSearch, toolCallId } = $('data extraction1').item.json;\n\nconst doctor = rows.find(r => r.DoctorID === doctorId);\n\nif (!doctor) {\n  return [{ json: { status: 'failed', message: `Doctor ${doctorId} not found`, toolCallId } }];\n}\n\nreturn [{ json: {\n  patientName, date, doctorId, startSearch, endSearch, toolCallId,\n  calendarId: doctor.CalendarID,\n  doctorName: doctor.DoctorName\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4208,
+        12960
+      ],
+      "id": "dfea87f1-9be8-40f8-9e79-4c2f7a1b8ff5",
+      "name": "Get Calendar ID for Cancel1"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Synergistic Hospitals",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "doctors",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -4448,
+        13344
+      ],
+      "id": "010ccb6a-7a54-4a0a-8a02-41a466bf8d0e",
+      "name": "Get Doctor for Reschedule1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst extractData = $('extract data').item.json;\nconst doctor = rows.find(r => r.DoctorID === extractData.doctorId);\n\nif (!doctor) {\n  return [{ json: { status: 'failed', message: `Doctor ${extractData.doctorId} not found`, toolCallId: extractData.toolCallId } }];\n}\n\nreturn [{ json: {\n  ...extractData,\n  calendarId: doctor.CalendarID,\n  doctorName: doctor.DoctorName\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4256,
+        13344
+      ],
+      "id": "a2cd2e73-0fad-43a8-b406-4b238c18fd8b",
+      "name": "Get Calendar ID for Reschedule1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "checkAvailability1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -4816,
+        12160
+      ],
+      "id": "f6f10c86-944e-4e2d-b346-ae1d0e78efd8",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst { toolCallId, date, time, doctorName } = $('Get Calendar ID').item.json;\n\nconst hasConflict = items.some(item => item.json?.id || item.json?.summary);\n\nreturn [{ json: { available: !hasConflict, toolCallId, date, time, doctorName } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3792,
+        12160
+      ],
+      "id": "6cf31ed0-21b7-4ddd-bca0-798ae2da3813",
+      "name": "compute availability"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bd3d778e-dda2-4774-ac83-0c5c376d1a90",
+              "leftValue": "={{ $json.available }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3568,
+        12160
+      ],
+      "id": "b2c9b173-75dc-4074-b2ba-aa64019b6d71",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"results\": [{\n    \"toolCallId\": \"{{ $('compute availability').item.json.toolCallId }}\",\n    \"result\": \"Slot is available with {{ $('compute availability').item.json.doctorName }} on {{ $('compute availability').item.json.date }} at {{ $('compute availability').item.json.time }}. You can proceed to book.\"\n  }]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -3360,
+        12080
+      ],
+      "id": "81b07ad4-4ae7-4f3a-b0f9-bda6eeb1be54",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"results\": [{\n    \"toolCallId\": \"{{ $('compute availability').item.json.toolCallId }}\",\n    \"result\": \"That slot is taken with {{ $('compute availability').item.json.doctorName }}. Please try a different time.\"\n  }]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -3360,
+        12240
+      ],
+      "id": "5df69d23-764b-4d50-8069-16f981ef7ba2",
+      "name": "Respond to Webhook10"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "timeMin": "={{ $json.startSearch }}",
+        "timeMax": "={{ $json.endSearch }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -4016,
+        12960
+      ],
+      "id": "fccc37d8-907b-4238-9609-97067dc4a0eb",
+      "name": "Get Events on That Day",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleCalendarOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst { patientName, date, toolCallId, calendarId, doctorId } = $('Get Calendar ID for Cancel1').item.json;\nconst nameLower = patientName.toLowerCase();\n\nconst match = items.find(item => {\n  const summary = (item.json?.summary || '').toLowerCase();\n  const description = (item.json?.description || '').toLowerCase();\n  return summary.includes(nameLower) || description.includes(nameLower);\n});\n\nreturn [{ json: {\n  found: !!(match?.json?.id),\n  eventId: match?.json?.id || null,\n  calendarEventId: match?.json?.id || null,\n  patientName, date, toolCallId, calendarId, doctorId\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3808,
+        12960
+      ],
+      "id": "37d4f89b-f3dd-4bf6-9b6b-c7e0d59bd8a1",
+      "name": "find matching event"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cn-if-cond-001",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3216,
+        12960
+      ],
+      "id": "7263b6b1-3873-40e7-a04f-5170d7b2079a",
+      "name": "Event Found?"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "eventId": "={{ $json.calendarEventId }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -2960,
+        12880
+      ],
+      "id": "bc63d6db-33d6-4b18-8cf4-9bc62471392b",
+      "name": "Delete Calendar Event",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleCalendarOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"results\": [\n    {\n      \"toolCallId\": \"{{ $('Merge Appointment Data').item.json.toolCallId }}\",\n      \"result\": \"success. Appointment for {{ $('Merge Appointment Data').item.json.patientName }} on {{ $('Merge Appointment Data').item.json.date }} has been successfully cancelled.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2592,
+        12880
+      ],
+      "id": "353cd48b-57f1-41f0-9a46-e7b983897a94",
+      "name": "Respond Cancelled"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"results\": [\n    {\n      \"toolCallId\": \"{{ $('find matching event').item.json.toolCallId }}\",\n      \"result\": \"not found. No appointment found for {{ $('find matching event').item.json.patientName }} on {{ $('find matching event').item.json.date }}. Please check the name or date.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2976,
+        13040
+      ],
+      "id": "18695dbe-2fbd-4d68-a8aa-7f3dc0b3f6f3",
+      "name": "Respond Not Found"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cancelAppointment1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -4816,
+        12960
+      ],
+      "id": "0793440e-c86b-4a5a-bdaa-16bd9c531b34",
+      "name": "Webhook10"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\nconst toolCall = body?.message?.toolCalls?.[0] || body?.message?.toolCallList?.[0];\n\nif (!toolCall) return [{ json: { status: 'failed', message: 'No tool call found', toolCallId: null } }];\n\nconst args = toolCall.function.arguments;\nconst toolCallId = toolCall.id;\n\nconst patientName = args.patientName || null;\nconst date = args.date || null;\nconst doctorId = args.doctorId || null;\n\nif (!patientName || !date || !doctorId) return [{ json: { status: 'failed', message: 'Missing patientName, date or doctorId', toolCallId } }];\n\nconst startSearch = new Date(`${date}T00:00:00+05:30`).toISOString();\nconst endSearch = new Date(`${date}T23:59:59+05:30`).toISOString();\n\nreturn [{ json: { patientName, date, doctorId, startSearch, endSearch, toolCallId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4624,
+        12960
+      ],
+      "id": "dfc14d30-23d2-463f-a8eb-4099d2637425",
+      "name": "data extraction1"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "start": "={{ $json.start }}",
+        "end": "={{ $json.end }}",
+        "additionalFields": {
+          "description": "=Patient Name: {{ $json.patientName }}\nReason: {{ $json.reason }}\nPhone: {{ $json.patientPhone }}\nBooked via: Synergistic Hospitals Voice Assistant",
+          "summary": "=Appointment: {{ $json.reason }} — {{ $json.patientName }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -4000,
+        12576
+      ],
+      "id": "1529b285-c8d8-469f-ae06-0dbfbdbc0292",
+      "name": "Create Calendar Event",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleCalendarOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const event = $input.first().json;\nconst { toolCallId, patientName, date, time, reason, doctorName, doctorId } = $('Get Calendar ID4').item.json;\n\nconst success = !!event.id;\n\nreturn [{ json: { success, eventId: event.id || null, patientName, date, time, reason, doctorName, doctorId, toolCallId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3808,
+        12576
+      ],
+      "id": "4ab3c7a9-b0bd-4db7-9083-8559bf9c4925",
+      "name": "check booking result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ba-if-cond-001",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3648,
+        12576
+      ],
+      "id": "f57e4463-9b32-4c98-8912-a56c5be4b9b9",
+      "name": "Booking Successful?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"results\": [\n    {\n      \"toolCallId\": \"{{ $('check booking result').item.json.toolCallId }}\",\n      \"result\": \"success. Appointment booked for {{ $('check booking result').item.json.patientName }} with {{ $('check booking result').item.json.doctorName }} on {{ $('check booking result').item.json.date }} at {{ $('check booking result').item.json.time }} for {{ $('check booking result').item.json.reason }}.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -3264,
+        12512
+      ],
+      "id": "dbae7343-8a77-41a1-af2c-300c8fb9a8e7",
+      "name": "Respond Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"results\": [\n    {\n      \"toolCallId\": \"{{ $('check booking result').item.json.toolCallId }}\",\n      \"result\": \"failed. Could not book appointment for {{ $('check booking result').item.json.patientName }} on {{ $('check booking result').item.json.date }} at {{ $('check booking result').item.json.time }}. Please try again.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -3408,
+        12688
+      ],
+      "id": "33ccb33f-6766-4f29-b76b-73dbfd56354a",
+      "name": "Respond Failed"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bookAppointment1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -4816,
+        12576
+      ],
+      "id": "9d9e36ac-13a9-4114-8853-afd36976c370",
+      "name": "Webhook11"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "timeMin": "={{ $json.start }}",
+        "timeMax": "={{ $json.end }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -4000,
+        12160
+      ],
+      "id": "6cc21afc-28f3-4d52-a9fc-3082b008acd6",
+      "name": "Get many events",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleCalendarOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rescheduleAppointment1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -4832,
+        13344
+      ],
+      "id": "210e909a-ab4d-4768-ab8d-2b2d3e682fc0",
+      "name": "Webhook12"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst data = $('Code in JavaScript1').item.json;\nconst nameLower = data.patientName.toLowerCase();\n\nconst match = items.find(item => {\n  const summary = (item.json?.summary || '').toLowerCase();\n  const description = (item.json?.description || '').toLowerCase();\n  return summary.includes(nameLower) || description.includes(nameLower);\n});\n\nreturn [{ json: {\n  found: !!(match?.json?.id),\n  oldEventId: match?.json?.id || null,\n  patientName: data.patientName,\n  oldDate: data.oldDate,\n  oldTime: data.oldTime,\n  newDate: data.newDate,\n  newTime: data.newTime,\n  newStart: data.newStart,\n  newEnd: data.newEnd,\n  reason: data.reason,\n  toolCallId: data.toolCallId,\n  calendarId: data.calendarId,\n  doctorName: data.doctorName,\n  appointmentId: data.appointmentId\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3456,
+        13344
+      ],
+      "id": "7e8a82c7-37e3-441b-a593-abdaa96906b3",
+      "name": "find matching old event"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7390d342-6edb-4369-a390-70f5518eb5bf",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3248,
+        13344
+      ],
+      "id": "843a8a39-fee0-4301-a658-07253004270a",
+      "name": "If4"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "eventId": "={{ $json.oldEventId }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -3040,
+        13248
+      ],
+      "id": "96582a2e-c020-4db6-893a-801a1ae780fd",
+      "name": "Delete an event",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleCalendarOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\nconst toolCall = body?.message?.toolCalls?.[0] || body?.message?.toolCallList?.[0];\n\nif (!toolCall) return [{ json: { status: 'failed', message: 'No tool call found', toolCallId: null } }];\n\nconst args = toolCall.function.arguments;\nconst toolCallId = toolCall.id;\n\nconst patientName = args.patientName || null;\nconst oldDate = args.oldDate || null;\nconst oldTime = args.oldTime || null;   // ← ADD THIS\nconst newDate = args.newDate || null;\nconst newTime = args.newTime || null;\nconst doctorId = args.doctorId || null;\nconst reason = args.reason || 'General Consultation';\n\nif (!patientName || !oldDate || !oldTime || !newDate || !newTime || !doctorId) {\n  return [{ json: { status: 'failed', message: 'Missing required fields', toolCallId } }];\n}\n\nconst oldStart = new Date(`${oldDate}T${oldTime}:00+05:30`).toISOString();  // ← exact time now\nconst oldEnd = new Date(`${oldDate}T${oldTime}:00+05:30`);\noldEnd.setMinutes(oldEnd.getMinutes() + 30);\n\nconst newStartDt = new Date(`${newDate}T${newTime}:00+05:30`);\nif (isNaN(newStartDt.getTime())) return [{ json: { status: 'failed', message: 'Invalid new date/time', toolCallId } }];\n\nconst newEndDt = new Date(newStartDt);\nnewEndDt.setMinutes(newEndDt.getMinutes() + 30);\n\nreturn [{ json: {\n  patientName, oldDate, oldTime, newDate, newTime, reason, doctorId,\n  oldStart,\n  oldEnd: oldEnd.toISOString(),\n  newStart: newStartDt.toISOString(),\n  newEnd: newEndDt.toISOString(),\n  toolCallId\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4624,
+        13344
+      ],
+      "id": "9158e752-3afa-47c0-a426-dd4e64392237",
+      "name": "extract data"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $('Code in JavaScript1').item.json.calendarId }}",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "timeMin": "={{ $('Code in JavaScript1').item.json.oldStart }}",
+        "timeMax": "={{ $('Code in JavaScript1').item.json.oldEnd }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -3648,
+        13344
+      ],
+      "id": "7378ff53-3682-4bed-ab61-66bb5b24960a",
+      "name": "find old event",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleCalendarOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"results\": [{\n    \"toolCallId\": \"{{ $('find matching old event').item.json.toolCallId }}\",\n    \"result\": \"success. Appointment for {{ $('find matching old event').item.json.patientName }} has been rescheduled to {{ $('find matching old event').item.json.newDate }} at {{ $('find matching old event').item.json.newTime }} with {{ $('find matching old event').item.json.doctorName }}.\"\n  }]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2432,
+        13248
+      ],
+      "id": "59f3c1ea-aa6d-43c0-8970-d02dfd83d94b",
+      "name": "Respond to Webhook11"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"results\": [{\n    \"toolCallId\": \"{{ $('find matching old event').item.json.toolCallId }}\",\n    \"result\": \"not found. No existing appointment found for {{ $('find matching old event').item.json.patientName }} on {{ $('find matching old event').item.json.oldDate }} at {{ $('find matching old event').item.json.oldTime }}. Please check the details.\"\n  }]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -3040,
+        13440
+      ],
+      "id": "adba6ec3-4612-4422-bdbd-70793ef86264",
+      "name": "Respond to Webhook12"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\nconst toolCall = body?.message?.toolCalls?.[0] || body?.message?.toolCallList?.[0];\nif (!toolCall) return [{ json: { status: 'failed', message: 'No tool call found', toolCallId: null } }];\n\nconst args = toolCall.function.arguments;\nconst toolCallId = toolCall.id;\nconst doctorId = args.doctorId || null;\nconst date = args.date || null;\nconst time = args.time || null;\n\nif (!doctorId || !date || !time) return [{ json: { status: 'failed', message: 'Missing doctorId, date or time', toolCallId } }];\n\nconst start = new Date(`${date}T${time}:00+05:30`);\nif (isNaN(start.getTime())) return [{ json: { status: 'failed', message: 'Invalid date/time', toolCallId } }];\n\nconst end = new Date(start);\nend.setMinutes(end.getMinutes() + 30);\n\nreturn [{ json: { doctorId, date, time, start: start.toISOString(), end: end.toISOString(), toolCallId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4608,
+        12160
+      ],
+      "id": "4a9ed8af-532f-493a-9f1f-a904ebfe742e",
+      "name": "Extract Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\nconst toolCall = body?.message?.toolCalls?.[0] || body?.message?.toolCallList?.[0];\n\nif (!toolCall) return [{ json: { status: 'failed', message: 'No tool call found', toolCallId: null } }];\n\nconst args = toolCall.function.arguments;\nconst toolCallId = toolCall.id;\n\nconst patientName = args.patientName || null;\nconst date = args.date || null;\nconst time = args.time || null;\nconst doctorId = args.doctorId || null;\nconst reason = args.reason || 'General Consultation';\nconst patientPhone = args.patientPhone || 'Not provided';\n\nif (!patientName || !date || !time || !doctorId) {\n  return [{ json: { status: 'failed', message: 'Missing required fields: patientName, date, time or doctorId', toolCallId } }];\n}\n\nconst start = new Date(`${date}T${time}:00+05:30`);\nif (isNaN(start.getTime())) return [{ json: { status: 'failed', message: 'Invalid date/time', toolCallId } }];\n\nconst end = new Date(start);\nend.setMinutes(end.getMinutes() + 30);\n\nreturn [{ json: { patientName, doctorId, date, time, reason, patientPhone, start: start.toISOString(), end: end.toISOString(), toolCallId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4592,
+        12576
+      ],
+      "id": "a5d7dc67-26d7-4bdb-8125-1127f04f1439",
+      "name": "Extract Data6"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $('find matching old event').item.json.calendarId }}",
+          "mode": "id"
+        },
+        "start": "={{ $('find matching old event').item.json.newStart }}",
+        "end": "={{ $('find matching old event').item.json.newEnd }}",
+        "additionalFields": {
+          "description": "=Patient Name: {{ $('find matching old event').item.json.patientName }}\nReason: {{ $('find matching old event').item.json.reason }}\nRescheduled from: {{ $('find matching old event').item.json.oldDate }}\nBooked via: Synergistic Hospitals Voice Assistant",
+          "summary": "=Appointment: {{ $('find matching old event').item.json.reason }} — {{ $('find matching old event').item.json.patientName }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -2848,
+        13248
+      ],
+      "id": "06d62fe0-aed9-41ba-ba42-4fc56031eff8",
+      "name": "Create an event1",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleCalendarOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "getDoctors",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -4816,
+        11792
+      ],
+      "id": "f34eaef7-6b34-468d-aa2a-3e394749ec2d",
+      "name": "Webhook13"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Synergistic Hospitals",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "doctors",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -4400,
+        11792
+      ],
+      "id": "b4e43969-1178-49a5-9b7d-105b9e7509c6",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\nconst toolCall = body?.message?.toolCalls?.[0] || body?.message?.toolCallList?.[0];\nconst toolCallId = toolCall?.id || null;\nconst args = toolCall?.function?.arguments || {};\nconst specialty = (args.specialty || '').toLowerCase().trim();\n\nreturn [{ json: { specialty, toolCallId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4608,
+        11792
+      ],
+      "id": "59f10dd6-5483-48e1-a4bd-5821b59deb66",
+      "name": "Extract Data7"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst toolCallId = $('Extract Data7').item.json.toolCallId;\nconst specialty = $('Extract Data7').item.json.specialty;\n\nlet doctors = items\n  .map(i => i.json)\n  .filter(row => row.Active === 'TRUE' || row.Active === true);\n\nif (specialty) {\n  doctors = doctors.filter(d =>\n    (d.Specialty || '').toLowerCase().includes(specialty)\n  );\n}\n\nif (doctors.length === 0) {\n  return [{ json: {\n    results: [{\n      toolCallId,\n      result: specialty\n        ? `No doctors found for ${specialty}. Available specialties are: ${[...new Set(items.map(i => i.json.Specialty).filter(Boolean))].join(', ')}.`\n        : `No doctors are currently available.`\n    }]\n  }}];\n}\n\nconst list = doctors.map(d => `${d.DoctorName} (${d.Specialty}), ID: ${d.DoctorID}`).join(' | ');\n\nreturn [{ json: {\n  results: [{\n    toolCallId,\n    result: `Available doctors: ${list}. Which doctor would you like to see?`\n  }]\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4192,
+        11792
+      ],
+      "id": "0e192209-6bf7-4beb-a51a-34f251163ca3",
+      "name": "Filter and Format"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -4016,
+        11792
+      ],
+      "id": "1444bcc4-45fa-4840-8dbc-9517473180c1",
+      "name": "Respond to Webhook13"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Synergistic Hospitals",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "doctors",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -4400,
+        12160
+      ],
+      "id": "172a4339-bdfa-4975-8909-fc3779638b24",
+      "name": "Get row(s) in sheet6",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst doctorId = $('Extract Data').first().json.doctorId;\n\nconst doctor = rows.find(r => r.DoctorID === doctorId);\n\nif (!doctor) {\n  return [{ json: {\n    status: 'failed',\n    message: `Doctor ${doctorId} not found`,\n    toolCallId: $('Extract Data').first().json.toolCallId\n  }}];\n}\n\nreturn [{ json: {\n  ...$('Extract Data').first().json,\n  calendarId: doctor.CalendarID,\n  doctorName: doctor.DoctorName\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4192,
+        12160
+      ],
+      "id": "ce734c88-962e-48db-b9a0-86dcc7a96545",
+      "name": "Get Calendar ID"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Synergistic Hospitals",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "doctors",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -4400,
+        12576
+      ],
+      "id": "24f2b974-8edb-410f-9e3e-a7ffff32a7bb",
+      "name": "Get row(s) in sheet7",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst { doctorId, toolCallId } = $('Extract Data6').item.json;\n\nconst doctor = rows.find(r => r.DoctorID === doctorId);\n\nif (!doctor) {\n  return [{ json: {\n    status: 'failed',\n    message: `Doctor ${doctorId} not found`,\n    toolCallId\n  }}];\n}\n\nreturn [{ json: {\n  ...$('Extract Data6').item.json,\n  calendarId: doctor.CalendarID,\n  doctorName: doctor.DoctorName,\n  specialty: doctor.Specialty\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4192,
+        12576
+      ],
+      "id": "60c302c1-c45d-4672-9893-df542a6e4a29",
+      "name": "Get Calendar ID4"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Synergistic Hospitals",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1645990672,
+          "mode": "list",
+          "cachedResultName": " Appointments",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1645990672"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "AppointmentID": "={{ $now.toMillis() }}",
+            "PatientName": "={{ $json.patientName }}",
+            "PatientPhone": "=",
+            "DoctorID": "={{ $('Get Calendar ID4').item.json.doctorId }}",
+            "DoctorName": "={{ $('Get Calendar ID4').item.json.doctorName }}",
+            "Specialty": "={{ $('Get Calendar ID4').item.json.specialty }}",
+            "Date": "={{ $json.date }}",
+            "Time": "={{ $json.time }}",
+            "Reason": "={{ $json.reason }}",
+            "Status": "Booked",
+            "CalendarEventID": "={{ $('Create Calendar Event').item.json.id }}",
+            "CreatedAt": "={{ $now }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "AppointmentID",
+              "displayName": "AppointmentID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PatientName",
+              "displayName": "PatientName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PatientPhone",
+              "displayName": "PatientPhone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DoctorID",
+              "displayName": "DoctorID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DoctorName",
+              "displayName": "DoctorName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Specialty",
+              "displayName": "Specialty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CalendarEventID",
+              "displayName": "CalendarEventID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CreatedAt",
+              "displayName": "CreatedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -3440,
+        12512
+      ],
+      "id": "12752b70-61c8-422a-9a08-42ad987bbb85",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Synergistic Hospitals",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1645990672,
+          "mode": "list",
+          "cachedResultName": " Appointments",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1645990672"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "CalendarEventID": "=Cancelled",
+            "Status": "cancled",
+            "AppointmentID": "={{ $('Merge Appointment Data').item.json.appointmentId }}"
+          },
+          "matchingColumns": [
+            "AppointmentID"
+          ],
+          "schema": [
+            {
+              "id": "AppointmentID",
+              "displayName": "AppointmentID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "PatientName",
+              "displayName": "PatientName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PatientPhone",
+              "displayName": "PatientPhone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DoctorID",
+              "displayName": "DoctorID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DoctorName",
+              "displayName": "DoctorName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Specialty",
+              "displayName": "Specialty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CalendarEventID",
+              "displayName": "CalendarEventID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CreatedAt",
+              "displayName": "CreatedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -2768,
+        12880
+      ],
+      "id": "39bc1cac-52ea-4375-a305-e4d671542aca",
+      "name": "Update row in sheet",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Synergistic Hospitals",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1645990672,
+          "mode": "list",
+          "cachedResultName": " Appointments",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1645990672"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -3632,
+        12960
+      ],
+      "id": "c5c87e05-b967-4d24-a980-93df876d88f4",
+      "name": "Get row(s) in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nconst prev = $('find matching event').item.json;\n\n// Find the row matching the calendarEventId\nconst sheetRow = rows.find(r => r.json?.CalendarEventID === prev.calendarEventId)?.json || null;\n\nreturn [{ json: {\n  ...prev,\n  appointmentId: sheetRow?.AppointmentID || null,\n  sheetRowNumber: sheetRow?.row_number || null\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3424,
+        12960
+      ],
+      "id": "85f1a370-e72f-4a61-8d5d-4dcb2435fc48",
+      "name": "Merge Appointment Data"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Synergistic Hospitals",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1645990672,
+          "mode": "list",
+          "cachedResultName": " Appointments",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1645990672"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -4048,
+        13344
+      ],
+      "id": "790b17fa-f57d-40cd-9429-96edd55c1b76",
+      "name": "Get row(s) in sheet2",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst data = $('Get Calendar ID for Reschedule1').item.json;\n\nconst patientNameLower = data.patientName.toLowerCase();\nconst oldDate = data.oldDate;\nconst oldTime = data.oldTime;\n\nconst match = rows.find(row => {\n  const nameMatch = (row.PatientName || '').toLowerCase().includes(patientNameLower);\n  const dateMatch = (row.Date || '').includes(oldDate);\n  const timeMatch = (row.Time || '').includes(oldTime);   // ← ADD TIME MATCH\n  const doctorMatch = (row.DoctorName || '').toLowerCase().includes((data.doctorName || '').toLowerCase());\n  return nameMatch && dateMatch && timeMatch && doctorMatch;\n});\n\nreturn [{ json: {\n  ...data,\n  appointmentId: match ? match.AppointmentID : null,\n  sheetRowFound: !!match\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3856,
+        13344
+      ],
+      "id": "a3ccabf7-e78d-4dbd-a3e6-c43cdb9e7b3a",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Synergistic Hospitals",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1645990672,
+          "mode": "list",
+          "cachedResultName": " Appointments",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1645990672"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "AppointmentID": "={{ $('find matching old event').item.json.appointmentId }}",
+            "Date": "={{ $('find matching old event').item.json.newDate }}",
+            "Time": "={{ $('find matching old event').item.json.newTime }}",
+            "Status": "Rescheduled"
+          },
+          "matchingColumns": [
+            "AppointmentID"
+          ],
+          "schema": [
+            {
+              "id": "AppointmentID",
+              "displayName": "AppointmentID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "PatientName",
+              "displayName": "PatientName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PatientPhone",
+              "displayName": "PatientPhone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DoctorID",
+              "displayName": "DoctorID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DoctorName",
+              "displayName": "DoctorName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Specialty",
+              "displayName": "Specialty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CalendarEventID",
+              "displayName": "CalendarEventID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CreatedAt",
+              "displayName": "CreatedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -2624,
+        13248
+      ],
+      "id": "8b2b49e1-02cc-48cd-ae43-ac24d786bd73",
+      "name": "Update row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL",
+          "name": "googleSheetsOAuth2Api (configure in n8n)"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get Doctor for Cancel1": {
+      "main": [
+        [
+          {
+            "node": "Get Calendar ID for Cancel1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Calendar ID for Cancel1": {
+      "main": [
+        [
+          {
+            "node": "Get Events on That Day",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Doctor for Reschedule1": {
+      "main": [
+        [
+          {
+            "node": "Get Calendar ID for Reschedule1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Calendar ID for Reschedule1": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "compute availability": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook10",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Events on That Day": {
+      "main": [
+        [
+          {
+            "node": "find matching event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "find matching event": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event Found?": {
+      "main": [
+        [
+          {
+            "node": "Delete Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook10": {
+      "main": [
+        [
+          {
+            "node": "data extraction1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "data extraction1": {
+      "main": [
+        [
+          {
+            "node": "Get Doctor for Cancel1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "check booking result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check booking result": {
+      "main": [
+        [
+          {
+            "node": "Booking Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking Successful?": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook11": {
+      "main": [
+        [
+          {
+            "node": "Extract Data6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many events": {
+      "main": [
+        [
+          {
+            "node": "compute availability",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook12": {
+      "main": [
+        [
+          {
+            "node": "extract data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "find matching old event": {
+      "main": [
+        [
+          {
+            "node": "If4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If4": {
+      "main": [
+        [
+          {
+            "node": "Delete an event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook12",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete an event": {
+      "main": [
+        [
+          {
+            "node": "Create an event1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extract data": {
+      "main": [
+        [
+          {
+            "node": "Get Doctor for Reschedule1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "find old event": {
+      "main": [
+        [
+          {
+            "node": "find matching old event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Data": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Data6": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event1": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook13": {
+      "main": [
+        [
+          {
+            "node": "Extract Data7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Filter and Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Data7": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter and Format": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook13",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet6": {
+      "main": [
+        [
+          {
+            "node": "Get Calendar ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Calendar ID": {
+      "main": [
+        [
+          {
+            "node": "Get many events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet7": {
+      "main": [
+        [
+          {
+            "node": "Get Calendar ID4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Calendar ID4": {
+      "main": [
+        [
+          {
+            "node": "Create Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Respond Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Merge Appointment Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Appointment Data": {
+      "main": [
+        [
+          {
+            "node": "Event Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "find old event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook11",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
