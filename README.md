@@ -9,6 +9,7 @@ Production-style automations I built as an AI Automation Engineer: voice agents,
 |---|---|
 | AI Outbound Sales Caller: grounded pitches, DNC and calling-hour rules in code, evidence-checked booking | [ai-outbound-sales-caller](https://github.com/venneladavunuri98-cloud/ai-outbound-sales-caller) |
 | Restaurant Voice Ordering Agent: 6 tool webhooks, 12-table Postgres schema, audit log, human handoff | [restaurant-voice-ordering-agent](https://github.com/venneladavunuri98-cloud/restaurant-voice-ordering-agent) |
+| AI Lead Finder: Apollo company + people search, buying-signal detection, LLM analysis, deterministic 0–100 scoring | [ai-lead-finder](https://github.com/venneladavunuri98-cloud/ai-lead-finder) |
 | Prior Authorization: physician approval, late PHI decryption, Availity submission, AI appeal drafts | [prior-authorization-approval](https://github.com/venneladavunuri98-cloud/prior-authorization-approval) |
 | RFP Intelligence Platform: LangGraph, citation verification, 165 tests | [RFP-Intelligence-Platform](https://github.com/venneladavunuri98-cloud/RFP-Intelligence-Platform) |
 
