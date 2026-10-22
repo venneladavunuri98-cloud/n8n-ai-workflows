@@ -4,6 +4,16 @@ Production-style automations I built as an AI Automation Engineer: voice agents,
 
 > **The AI drafts, retrieves or talks. Code verifies. A human (or a hard rule) makes the decisions that matter.**
 
+## ⭐ Flagship projects (full standalone repos)
+| Project | Repo |
+|---|---|
+| AI Outbound Sales Caller: grounded pitches, DNC and calling-hour rules in code, evidence-checked booking | [ai-outbound-sales-caller](https://github.com/venneladavunuri98-cloud/ai-outbound-sales-caller) |
+| Restaurant Voice Ordering Agent: 6 tool webhooks, 12-table Postgres schema, audit log, human handoff | [restaurant-voice-ordering-agent](https://github.com/venneladavunuri98-cloud/restaurant-voice-ordering-agent) |
+| Prior Authorization: physician approval, late PHI decryption, Availity submission, AI appeal drafts | [prior-authorization-approval](https://github.com/venneladavunuri98-cloud/prior-authorization-approval) |
+| RFP Intelligence Platform: LangGraph, citation verification, 165 tests | [RFP-Intelligence-Platform](https://github.com/venneladavunuri98-cloud/RFP-Intelligence-Platform) |
+
+## All workflows
+
 | Workflow | Pain point it solves | Stack |
 |---|---|---|
 | [Restaurant Voice Ordering Agent](workflows/01-restaurant-voice-ordering-agent/) | Restaurants miss orders when the phone line is busy at peak hours, and staff spend that time reading out the menu, prices and allergens instead of cooking. | OmniDimension (voice + LLM), n8n, PostgreSQL / Supabase |
