@@ -1,0 +1,12 @@
+repos:
+  - repo: local
+    hooks:
+      - id: check-secrets
+        name: Block secrets and personal data
+        entry: python scripts/check_secrets.py
+        language: system
+        pass_filenames: true
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks

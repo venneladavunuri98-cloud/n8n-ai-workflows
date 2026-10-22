@@ -1,0 +1,20 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+# Raw, unsanitized n8n exports – keep these OUT of git
+raw/
+*.crdownload
+# Call recordings, real data, office docs
+*.mp3
+*.wav
+*.csv
+*.xlsx
+*.docx
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
